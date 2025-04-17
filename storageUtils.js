@@ -254,6 +254,7 @@ function _importFromLua(luaCode) {
   }
 
   // Helper function to process a style block
+  // Helper function to process a style block
   function _processStyleBlock(styleBlock) {
     try {
       // Create a new style object
@@ -301,18 +302,27 @@ function _importFromLua(luaCode) {
         for (const nameType of ['display_name_tier', 'display_base_name', 'display_name_curio',
           'display_name_weapon', 'display_name_weapon_ranged', 'display_name_other']) {
           // Match both formats: property = { en = "value" } and property = { ["en"] = "value" }
-          const nameRegex = new RegExp(`${nameType}\\s*=\\s*\\{([^{}]*)\\}`, 'g');
-        const nameMatch = nameRegex.exec(tierContent);
+          const nameRegex = new RegExp(`${nameType}\\s*=\\s*\\{([^{}]*)\\}`, 'i'); // Added 'i' for case insensitivity
+          const nameMatch = nameRegex.exec(tierContent);
 
         if (nameMatch) {
           const langData = nameMatch[1];
-          // Handle both ["lang"] = "value" and lang = "value" formats
+
+          // Try to find direct english match first
+          const enMatch = /\s*en\s*=\s*"([^"]*)"/i.exec(langData);
+          if (enMatch) {
+            tier[nameType].en = enMatch[1];
+          }
+
+          // Handle both ["lang"] = "value" and lang = "value" formats for all languages
           const langMatches = langData.matchAll(/\s*((?:\["?([^"\]]+)"?\])|(\w+))\s*=\s*"([^"]*)"/g);
 
           for (const langMatch of Array.from(langMatches)) {
             const langKey = langMatch[2] || langMatch[3];
             const langValue = langMatch[4];
-            tier[nameType][langKey] = langValue;
+            if (langKey && langValue) {
+              tier[nameType][langKey.toLowerCase()] = langValue; // Convert key to lowercase for consistency
+            }
           }
         }
           }
@@ -320,32 +330,52 @@ function _importFromLua(luaCode) {
           // Extract color properties
           for (const colorType of ['base_unified_color', 'weapons_unified_color', 'weapons_ranged_color',
             'curio_color', 'other_item_color']) {
-            const colorRegex = new RegExp(`${colorType}\\s*=\\s*\\{\\s*([\\d,\\s]+)\\s*\\}`);
-          const colorMatch = colorRegex.exec(tierContent);
+            const colorRegex = new RegExp(`${colorType}\\s*=\\s*\\{\\s*([\\d,\\s]+)\\s*\\}`, 'i'); // Added 'i' for case insensitivity
+            const colorMatch = colorRegex.exec(tierContent);
 
           if (colorMatch) {
             const colorValues = colorMatch[1].split(',').map(n => parseInt(n.trim()));
             if (colorValues.length >= 4) {
-              tier[colorType] = colorValues;
+              // IMPORTANT: Ensure color array is correctly formatted
+              // Your Lua format might have RGBA or ARGB - make sure it's what your app expects
+              // Assuming format is [A, R, G, B] as in your defaults
+              tier[colorType] = [
+                colorValues[0], // Alpha
+                colorValues[1], // R
+                colorValues[2], // G
+                colorValues[3]  // B
+              ];
             }
           }
             }
 
             // Extract boolean properties
             for (const boolType of ['unified_active', 'unified_weapons_colors', 'unified_base_names', 'needs_max_expertise']) {
-              const boolRegex = new RegExp(`${boolType}\\s*=\\s*(true|false)`);
+              const boolRegex = new RegExp(`${boolType}\\s*=\\s*(true|false)`, 'i'); // Added 'i' for case insensitivity
               const boolMatch = boolRegex.exec(tierContent);
 
               if (boolMatch) {
-                tier[boolType] = boolMatch[1] === 'true';
+                tier[boolType] = boolMatch[1].toLowerCase() === 'true';
               }
             }
 
             // Extract rarity
-            const rarityMatch = /rarity\s*=\s*(\d+)/.exec(tierContent);
+            const rarityMatch = /rarity\s*=\s*(\d+)/i.exec(tierContent); // Added 'i' for case insensitivity
             if (rarityMatch) {
               tier.rarity = parseInt(rarityMatch[1]);
             }
+
+            // Add debugging info for colors
+            console.log(`Extracted tier ${tierKey} data:`, {
+              name: tier.display_name_tier.en,
+              colors: {
+                base: tier.base_unified_color,
+                weapons: tier.weapons_unified_color,
+                ranged: tier.weapons_ranged_color,
+                curio: tier.curio_color,
+                other: tier.other_item_color
+              }
+            });
 
             // Add tier to style
             style[tierKey] = tier;
