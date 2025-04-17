@@ -1,5 +1,6 @@
 // Storage and Import/Export Utilities for Master Works SPA
-
+// At the beginning of storageUtils.js, add:
+console.log("StorageUtils module loading...");
 // Local storage key for style catalog
 const STORAGE_KEY = 'masterworks_style_catalog';
 
@@ -401,3 +402,7 @@ export const StorageUtils = {
   importLanguageData: _importLanguageData,
   exportLanguageData: _exportLanguageData
 };
+// At the end of storageUtils.js, add:
+console.log("StorageUtils module loaded, exposing to window.");
+window.StorageUtils = StorageUtils;
+console.log("Window.StorageUtils set to:", window.StorageUtils);

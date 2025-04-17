@@ -18,6 +18,10 @@ class MasterWorksApp {
   
   // Modify this function in app.js
   _init() {
+    // In your _init() function in app.js, before using StorageUtils:
+    console.log("App _init() called");
+    console.log("window.StorageUtils available?", window.StorageUtils);
+    console.log("imported StorageUtils available?", StorageUtils);
     // Load catalog from storage
     this.catalog = window.StorageUtils.initStyleCatalog();
 
