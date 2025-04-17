@@ -146,126 +146,136 @@ function _exportCatalogAsJson(catalog) {
   return JSON.stringify(catalog, null, 2);
 }
 
-// Import from Lua code
-function _importFromLua(luaCode) {
+// Update this function in storageUtils.js
+function importFromLua(luaCode) {
   try {
     // Extract the CUSTOM_STYLES table content between curly braces
     const match = luaCode.match(/local\s+CUSTOM_STYLES\s*=\s*\{([\s\S]*)\}\s*return/m);
-    
+
     if (!match || !match[1]) {
       throw new Error('Could not find CUSTOM_STYLES table in the Lua code');
     }
-    
+
     const tableContent = match[1];
-    
-    // Parse styles from the Lua table
     const catalog = {};
-    
-    // Regular expression to match style entries
-    const styleRegex = /(\w+)\s*=\s*\{([\s\S]*?)},\s*\n\s*\n/g;
-    let styleMatch;
-    
-    while ((styleMatch = styleRegex.exec(tableContent)) !== null) {
-      const styleKey = styleMatch[1].trim();
-      const styleContent = styleMatch[2];
-      
-      // Create a new style object
-      const style = {
-        title: '',
-        author: ''
-      };
-      
-      // Extract title and author
-      const titleMatch = styleContent.match(/title\s*=\s*"([^"]*)"/);
-      if (titleMatch) style.title = titleMatch[1];
-      
-      const authorMatch = styleContent.match(/author\s*=\s*"([^"]*)"/);
-      if (authorMatch) style.author = authorMatch[1];
-      
-      // Extract tiers
-      const tierRegex = /(tier\d)\s*=\s*\{([\s\S]*?)},\s*\n/g;
-      let tierMatch;
-      
-      while ((tierMatch = tierRegex.exec(styleContent)) !== null) {
-        const tierKey = tierMatch[1];
-        const tierContent = tierMatch[2];
-        
-        // Create new tier object
-        const tier = {
-          display_name_tier: { en: '' },
-          display_base_name: { en: '' },
-          display_name_curio: { en: '' },
-          display_name_weapon: { en: '' },
-          display_name_weapon_ranged: { en: '' },
-          display_name_other: { en: '' },
-          base_unified_color: [255, 255, 255, 255],
-          weapons_unified_color: [255, 255, 255, 255],
-          weapons_ranged_color: [255, 255, 255, 255],
-          curio_color: [255, 255, 255, 255],
-          other_item_color: [255, 255, 255, 255],
-          unified_active: true,
-          unified_weapons_colors: true,
-          unified_base_names: true,
-          rarity: parseInt(tierKey.replace('tier', '')) === 0 ? 5 : 5 - parseInt(tierKey.replace('tier', '')),
-          needs_max_expertise: tierKey === 'tier0'
+
+    // Find all style entries - improved regex pattern
+    // This looks for key = { followed by content up to matching closing brace
+    const styleEntryPattern = /(\w+)\s*=\s*\{([^{}]*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}[^{}]*)*)\},?\s*(?=\w+\s*=\s*\{|\s*$)/g;
+
+      let styleMatch;
+      while ((styleMatch = styleEntryPattern.exec(tableContent)) !== null) {
+        const styleKey = styleMatch[1].trim();
+        const styleContent = styleMatch[2];
+
+        // Create a new style object
+        const style = {
+          title: '',
+          author: ''
         };
-        
-        // Extract display name properties
-        for (const nameType of ['display_name_tier', 'display_base_name', 'display_name_curio', 
-                              'display_name_weapon', 'display_name_weapon_ranged', 'display_name_other']) {
-          const nameMatch = new RegExp(`${nameType}\\s*=\\s*\\{([\\s\\S]*?)\\},`).exec(tierContent);
-          
+
+        // Extract title and author
+        const titleMatch = styleContent.match(/title\s*=\s*"([^"]*)"/);
+        if (titleMatch) style.title = titleMatch[1];
+
+        const authorMatch = styleContent.match(/author\s*=\s*"([^"]*)"/);
+        if (authorMatch) style.author = authorMatch[1];
+
+        // Extract tiers
+        // Improved tier extraction pattern
+        const tierPattern = /(tier\d)\s*=\s*\{([^{}]*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}[^{}]*)*)\},?/g;
+
+        let tierMatch;
+        while ((tierMatch = tierPattern.exec(styleContent)) !== null) {
+          const tierKey = tierMatch[1];
+          const tierContent = tierMatch[2];
+
+          // Create new tier object with defaults
+          const tier = {
+            display_name_tier: { en: '' },
+            display_base_name: { en: '' },
+            display_name_curio: { en: '' },
+            display_name_weapon: { en: '' },
+            display_name_weapon_ranged: { en: '' },
+            display_name_other: { en: '' },
+            base_unified_color: [255, 255, 255, 255],
+            weapons_unified_color: [255, 255, 255, 255],
+            weapons_ranged_color: [255, 255, 255, 255],
+            curio_color: [255, 255, 255, 255],
+            other_item_color: [255, 255, 255, 255],
+            unified_active: true,
+            unified_weapons_colors: true,
+            unified_base_names: true,
+            rarity: parseInt(tierKey.replace('tier', '')) === 0 ? 5 : 5 - parseInt(tierKey.replace('tier', '')),
+            needs_max_expertise: tierKey === 'tier0'
+          };
+
+          // Extract display name properties
+          for (const nameType of ['display_name_tier', 'display_base_name', 'display_name_curio',
+            'display_name_weapon', 'display_name_weapon_ranged', 'display_name_other']) {
+            // Improved pattern to match nested tables for language entries
+            const nameRegex = new RegExp(`${nameType}\\s*=\\s*\\{([^{}]*(?:\\{[^{}]*\\}[^{}]*)*)\\}`, 'g');
+          const nameMatch = nameRegex.exec(tierContent);
+
           if (nameMatch) {
             const langData = nameMatch[1];
+            // Handle both ["lang"] = "value" and lang = "value" formats
             const langMatches = langData.matchAll(/\s*((?:\["?([^"\]]+)"?\])|(\w+))\s*=\s*"([^"]*)"/g);
-            
-            for (const langMatch of langMatches) {
+
+            for (const langMatch of Array.from(langMatches)) {
               const langKey = langMatch[2] || langMatch[3];
               const langValue = langMatch[4];
               tier[nameType][langKey] = langValue;
             }
           }
+            }
+
+            // Extract color properties
+            for (const colorType of ['base_unified_color', 'weapons_unified_color', 'weapons_ranged_color',
+              'curio_color', 'other_item_color']) {
+              const colorRegex = new RegExp(`${colorType}\\s*=\\s*\\{\\s*([\\d,\\s]+)\\s*\\}`);
+            const colorMatch = colorRegex.exec(tierContent);
+
+            if (colorMatch) {
+              const colorValues = colorMatch[1].split(',').map(n => parseInt(n.trim()));
+              if (colorValues.length >= 4) {
+                tier[colorType] = colorValues;
+              }
+            }
+              }
+
+              // Extract boolean properties
+              for (const boolType of ['unified_active', 'unified_weapons_colors', 'unified_base_names', 'needs_max_expertise']) {
+                const boolRegex = new RegExp(`${boolType}\\s*=\\s*(true|false)`);
+                const boolMatch = boolRegex.exec(tierContent);
+
+                if (boolMatch) {
+                  tier[boolType] = boolMatch[1] === 'true';
+                }
+              }
+
+              // Extract rarity
+              const rarityMatch = /rarity\s*=\s*(\d+)/.exec(tierContent);
+              if (rarityMatch) {
+                tier.rarity = parseInt(rarityMatch[1]);
+              }
+
+              // Add tier to style
+              style[tierKey] = tier;
         }
-        
-        // Extract color properties
-        for (const colorType of ['base_unified_color', 'weapons_unified_color', 'weapons_ranged_color', 
-                               'curio_color', 'other_item_color']) {
-          const colorMatch = new RegExp(`${colorType}\\s*=\\s*\\{\\s*([\\d,\\s]+)\\s*\\}`).exec(tierContent);
-          
-          if (colorMatch) {
-            tier[colorType] = colorMatch[1].split(',').map(n => parseInt(n.trim()));
-          }
+
+        // Only add style to catalog if it has valid tiers
+        if (Object.keys(style).some(key => key.startsWith('tier'))) {
+          catalog[styleKey] = style;
         }
-        
-        // Extract boolean properties
-        for (const boolType of ['unified_active', 'unified_weapons_colors', 'unified_base_names', 'needs_max_expertise']) {
-          const boolMatch = new RegExp(`${boolType}\\s*=\\s*(true|false)`).exec(tierContent);
-          
-          if (boolMatch) {
-            tier[boolType] = boolMatch[1] === 'true';
-          }
-        }
-        
-        // Extract rarity
-        const rarityMatch = /rarity\s*=\s*(\d+)/.exec(tierContent);
-        if (rarityMatch) {
-          tier.rarity = parseInt(rarityMatch[1]);
-        }
-        
-        // Add tier to style
-        style[tierKey] = tier;
       }
-      
-      // Add style to catalog
-      catalog[styleKey] = style;
+
+      return catalog;
+    } catch (e) {
+      console.error('Failed to parse Lua code:', e);
+      throw e;
     }
-    
-    return catalog;
-  } catch (e) {
-    console.error('Failed to parse Lua code:', e);
-    throw e;
   }
-}
 
 // Import from JSON
 function _importFromJson(jsonData) {

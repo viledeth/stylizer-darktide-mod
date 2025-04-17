@@ -16,25 +16,32 @@ class MasterWorksApp {
     this._init();
   }
   
-  // Initialize the application
+  // Modify this function in app.js
   _init() {
     // Load catalog from storage
-    this.catalog = StorageUtils.initStyleCatalog();
-    
+    this.catalog = window.StorageUtils.initStyleCatalog();
+
     // Set up UI
     this._setupUI();
-    
-    // If catalog is empty, create a default style
-    if (Object.keys(this.catalog).length === 0) {
-      this._createNewStyle();
-    } else {
-      // Select the first style
+
+    // If catalog is not empty, select the first style
+    if (Object.keys(this.catalog).length > 0) {
       this.currentStyleKey = Object.keys(this.catalog)[0];
       this.currentStyle = this.catalog[this.currentStyleKey];
       this._updateStyleSelector();
       this._loadCurrentStyle();
+    } else {
+      // Show empty state instead of creating a default style
+      document.getElementById('editor-tab').innerHTML = `
+      <div class="empty-state">
+      <h2>No Styles Found</h2>
+      <p>Click "New Style" to create your first style or import an existing one.</p>
+      </div>
+      `;
+      // Also update language and import/export tabs
+      document.getElementById('language-editor-container').innerHTML = '<p>Create or import a style to begin.</p>';
     }
-    
+
     // Set up event listeners
     this._setupEventListeners();
   }
