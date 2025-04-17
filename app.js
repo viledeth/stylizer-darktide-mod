@@ -289,15 +289,20 @@ class MasterWorksApp {
   
   // Load the current style
   _loadCurrentStyle() {
-    if (!this.currentStyle) return;
-    
+    if (!this.currentStyle) {
+      console.error("_loadCurrentStyle called but this.currentStyle is", this.currentStyle);
+      return;
+    }
+
+    console.log("Loading style:", this.currentStyleKey, this.currentStyle);
+
     // Update metadata fields
     document.getElementById('style-title').value = this.currentStyle.title || '';
     document.getElementById('style-author').value = this.currentStyle.author || '';
-    
+
     // Load tiers
     this._loadTiers();
-    
+
     // Refresh language editor
     this._refreshLanguageEditor();
   }
@@ -739,6 +744,8 @@ class MasterWorksApp {
       
       // Refresh style data
       this.currentStyle = this.catalog[this.currentStyleKey];
+      // After successful import and setting this.currentStyle
+      console.log("IMPORTED STYLE:", JSON.stringify(this.currentStyle, null, 2));
       
       // Refresh language editor
       this._refreshLanguageEditor();
