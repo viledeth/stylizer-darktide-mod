@@ -1,4 +1,4 @@
-// UI Utilities for Master Works SPA
+// UI Utilities for Make Me Special SPA
 
 import { StylesUtil } from './defaultStyles.js';
 

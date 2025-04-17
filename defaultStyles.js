@@ -1,4 +1,4 @@
-// Default style template for Master Works
+// Default style template for Make Me Special
 const DEFAULT_STYLE_TEMPLATE = {
   title: "New Style",
   author: "Your Name",

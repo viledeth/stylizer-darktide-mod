@@ -1,4 +1,4 @@
-// Master Works Style Editor Application Logic
+// Make Me Special Style Editor Application Logic
 import { StylesUtil } from './defaultStyles.js';
 import { StorageUtils } from './storageUtils.js';
 import { UiUtils } from './uiUtils.js';
@@ -58,7 +58,7 @@ class MasterWorksApp {
     
     appContainer.innerHTML = `
       <div class="app-header">
-        <h1>Master Works Style Editor</h1>
+        <h1>Make Me Special Style Editor</h1>
         <div class="style-controls">
           <div class="style-selector-container">
             <select id="style-selector">
@@ -578,7 +578,7 @@ class MasterWorksApp {
       fileName = 'custom_styles.lua';
       mimeType = 'application/x-lua';
     } else {
-      fileName = exportTarget === 'all' ? 'master_works_styles.json' : `${this.currentStyleKey}.json`;
+      fileName = exportTarget === 'all' ? 'make_me_special_styles.json' : `${this.currentStyleKey}.json`;
       mimeType = 'application/json';
     }
     
