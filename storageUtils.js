@@ -386,8 +386,7 @@ function _exportLanguageData(styleKey, languages = null) {
   
   return JSON.stringify(result, null, 2);
 }
-// At the end of storageUtils.js, add:
-window.StorageUtils = StorageUtils;
+
 // Export functions
 export const StorageUtils = {
   initStyleCatalog: _initStyleCatalog,
