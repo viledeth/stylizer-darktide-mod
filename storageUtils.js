@@ -149,53 +149,168 @@ function _exportCatalogAsJson(catalog) {
 
 function _importFromLua(luaCode) {
   try {
-    // Extract the CUSTOM_STYLES table content between curly braces
-    const match = luaCode.match(/local\s+CUSTOM_STYLES\s*=\s*\{([\s\S]*)\}\s*return/m);
+    console.log("Starting Lua import...");
 
-    if (!match || !match[1]) {
-      throw new Error('Could not find CUSTOM_STYLES table in the Lua code');
+    // Clean up the code - remove comments
+    let cleanCode = luaCode.replace(/--\[\[[\s\S]*?\]\]/g, ''); // Remove multi-line comments
+    cleanCode = cleanCode.split('\n').map(line => {
+      const commentPos = line.indexOf('--');
+      return commentPos >= 0 ? line.substring(0, commentPos) : line;
+    }).join('\n');
+
+    // Locate the CUSTOM_STYLES table
+    const tableMatch = cleanCode.match(/local\s+CUSTOM_STYLES\s*=\s*\{([\s\S]*)\}\s*return/);
+    if (!tableMatch) {
+      throw new Error("Could not find CUSTOM_STYLES table in Lua code");
     }
 
-    const tableContent = match[1];
+    const tableContent = tableMatch[1];
     const catalog = {};
 
-    // Find all style entries - improved regex pattern
-    // This looks for key = { followed by content up to matching closing brace
-    const styleEntryPattern = /(\w+)\s*=\s*\{([^{}]*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}[^{}]*)*)\},?\s*(?=\w+\s*=\s*\{|\s*$)/g;
+    // Helper function to find all styles in the Lua table content
+    function findStyles(content) {
+      const styles = {};
+      let currentStyleKey = null;
+      let braceLevel = 0;
+      let currentContent = '';
+      let inStyle = false;
 
-      let styleMatch;
-      while ((styleMatch = styleEntryPattern.exec(tableContent)) !== null) {
-        const styleKey = styleMatch[1].trim();
-        const styleContent = styleMatch[2];
+      // Process line by line
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
 
-        // Skip commented entries
-        if (styleContent.includes("--[[") || styleKey.startsWith("--")) {
-          continue;
+        if (!inStyle) {
+          // Look for style start: key = {
+          const match = line.match(/^(\w+)\s*=\s*\{/);
+            if (match) {
+              currentStyleKey = match[1];
+              inStyle = true;
+              braceLevel = 1; // We've found the opening brace
+              currentContent = line + '\n';
+            }
+          } else {
+            // We're inside a style definition
+            currentContent += line + '\n';
+
+            // Count braces to track nesting
+            for (let j = 0; j < line.length; j++) {
+              if (line[j] === '{') braceLevel++;
+              if (line[j] === '}') braceLevel--;
+            }
+
+            // If braces are balanced and we've hit a comma after closing brace, style definition is complete
+            if (braceLevel === 0 && line.endsWith(',')) {
+              styles[currentStyleKey] = currentContent;
+              inStyle = false;
+              currentStyleKey = null;
+              currentContent = '';
+            }
+          }
         }
 
-        // Create a new style object
-        const style = {
-          title: '',
-          author: ''
-        };
+        return styles;
+      }
 
-        // Extract title and author
-        const titleMatch = styleContent.match(/title\s*=\s*"([^"]*)"/);
-        if (titleMatch) style.title = titleMatch[1];
+      // Various helper functions for extraction
+      function extractStringValue(content, key) {
+        const regex = new RegExp(`\\b${key}\\s*=\\s*"([^"]*)"`, 'i');
+        const match = regex.exec(content);
+        return match ? match[1] : '';
+      }
 
-        const authorMatch = styleContent.match(/author\s*=\s*"([^"]*)"/);
-        if (authorMatch) style.author = authorMatch[1];
+      function extractTable(content, key) {
+        const pattern = new RegExp(`\\b${key}\\s*=\\s*\\{([^]*?)\\}`, 'i');
+        const match = pattern.exec(content);
+        return match ? match[1].trim() : null;
+      }
 
-        // Extract tiers
-        // Improved tier extraction pattern
-        const tierPattern = /(tier\d)\s*=\s*\{([^{}]*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}[^{}]*)*)\},?/g;
+      function extractLangEntries(tableContent) {
+        const entries = {};
 
-        let tierMatch;
-        while ((tierMatch = tierPattern.exec(styleContent)) !== null) {
-          const tierKey = tierMatch[1];
-          const tierContent = tierMatch[2];
+        // Match both formats: en = "value" and ["en"] = "value"
+        const regex1 = /\b(\w+)\s*=\s*"([^"]*)"/g;
+        const regex2 = /\["([^"]*)"\]\s*=\s*"([^"]*)"/g;
 
-          // Create new tier object with defaults
+        let match;
+        while ((match = regex1.exec(tableContent)) !== null) {
+          entries[match[1]] = match[2];
+        }
+
+        while ((match = regex2.exec(tableContent)) !== null) {
+          entries[match[1]] = match[2];
+        }
+
+        return entries;
+      }
+
+      function extractColorArray(content, key) {
+        const pattern = new RegExp(`\\b${key}\\s*=\\s*\\{\\s*([\\d,\\s]+)\\s*\\}`, 'i');
+        const match = pattern.exec(content);
+
+        if (match) {
+          return match[1].split(',').map(v => parseInt(v.trim()));
+        }
+
+        return null;
+      }
+
+      function extractBoolValue(content, key) {
+        const pattern = new RegExp(`\\b${key}\\s*=\\s*(true|false)\\b`, 'i');
+        const match = pattern.exec(content);
+
+        if (match) {
+          return match[1].toLowerCase() === 'true';
+        }
+
+        return null;
+      }
+
+      function extractNumberValue(content, key) {
+        const pattern = new RegExp(`\\b${key}\\s*=\\s*(\\d+)\\b`, 'i');
+        const match = pattern.exec(content);
+
+        if (match) {
+          return parseInt(match[1]);
+        }
+
+        return null;
+      }
+
+      function extractTierBlocks(styleData) {
+        const tiers = {};
+        const tierRegex = /\s*(tier\d+)\s*=\s*\{/g;
+
+          let match;
+          while ((match = tierRegex.exec(styleData)) !== null) {
+            const tierKey = match[1];
+            const startPos = match.index;
+
+            // Find the closing brace for this tier block
+            let braceLevel = 1;
+            let endPos = startPos + match[0].length;
+
+            for (let i = endPos; i < styleData.length; i++) {
+              if (styleData[i] === '{') braceLevel++;
+              if (styleData[i] === '}') braceLevel--;
+
+              if (braceLevel === 0) {
+                endPos = i + 1;
+                break;
+              }
+            }
+
+            // Extract the tier content including braces
+            tiers[tierKey] = styleData.substring(startPos, endPos);
+          }
+
+          return tiers;
+        }
+
+        // Process tier data
+        function processTier(tierKey, tierContent) {
+          // Create tier with default values
           const tier = {
             display_name_tier: { en: '' },
             display_base_name: { en: '' },
@@ -215,83 +330,109 @@ function _importFromLua(luaCode) {
             needs_max_expertise: tierKey === 'tier0'
           };
 
-          // Extract display name properties
-          for (const nameType of ['display_name_tier', 'display_base_name', 'display_name_curio',
-            'display_name_weapon', 'display_name_weapon_ranged', 'display_name_other']) {
-            // Improved pattern to match nested tables for language entries
-            const nameRegex = new RegExp(`${nameType}\\s*=\\s*\\{([^{}]*(?:\\{[^{}]*\\}[^{}]*)*)\\}`, 'g');
-          const nameMatch = nameRegex.exec(tierContent);
+          // Process display names
+          const nameFields = [
+            'display_name_tier',
+            'display_base_name',
+            'display_name_curio',
+            'display_name_weapon',
+            'display_name_weapon_ranged',
+            'display_name_other'
+          ];
 
-          if (nameMatch) {
-            const langData = nameMatch[1];
-            // Handle both ["lang"] = "value" and lang = "value" formats
-            const langMatches = langData.matchAll(/\s*((?:\["?([^"\]]+)"?\])|(\w+))\s*=\s*"([^"]*)"/g);
-
-            for (const langMatch of Array.from(langMatches)) {
-              const langKey = langMatch[2] || langMatch[3];
-              const langValue = langMatch[4];
-              if (langKey && langValue) {
-                tier[nameType][langKey] = langValue;
+          for (const field of nameFields) {
+            const langTable = extractTable(tierContent, field);
+            if (langTable) {
+              const langEntries = extractLangEntries(langTable);
+              for (const [lang, value] of Object.entries(langEntries)) {
+                tier[field][lang] = value;
               }
             }
           }
+
+          // Process color arrays
+          const colorFields = [
+            'base_unified_color',
+            'weapons_unified_color',
+            'weapons_ranged_color',
+            'curio_color',
+            'other_item_color'
+          ];
+
+          for (const field of colorFields) {
+            const colorArray = extractColorArray(tierContent, field);
+            if (colorArray && colorArray.length >= 4) {
+              tier[field] = colorArray;
             }
+          }
 
-            // Extract color properties
-            for (const colorType of ['base_unified_color', 'weapons_unified_color', 'weapons_ranged_color',
-              'curio_color', 'other_item_color']) {
-              const colorRegex = new RegExp(`${colorType}\\s*=\\s*\\{\\s*([\\d,\\s]+)\\s*\\}`);
-            const colorMatch = colorRegex.exec(tierContent);
+          // Process boolean fields
+          const boolFields = [
+            'unified_active',
+            'unified_weapons_colors',
+            'unified_base_names',
+            'needs_max_expertise'
+          ];
 
-            if (colorMatch) {
-              const colorValues = colorMatch[1].split(',').map(n => parseInt(n.trim()));
-              if (colorValues.length >= 4) {
-                // Explicitly assign each value to ensure correct order
-                tier[colorType] = [
-                  colorValues[0], // Alpha
-                  colorValues[1], // R
-                  colorValues[2], // G
-                  colorValues[3]  // B
-                ];
-
-                console.log(`Set color for ${tierKey}.${colorType}:`, tier[colorType]);
-              }
+          for (const field of boolFields) {
+            const value = extractBoolValue(tierContent, field);
+            if (value !== null) {
+              tier[field] = value;
             }
-              }
+          }
 
-              // Extract boolean properties
-              for (const boolType of ['unified_active', 'unified_weapons_colors', 'unified_base_names', 'needs_max_expertise']) {
-                const boolRegex = new RegExp(`${boolType}\\s*=\\s*(true|false)`);
-                const boolMatch = boolRegex.exec(tierContent);
+          // Extract rarity
+          const rarity = extractNumberValue(tierContent, 'rarity');
+          if (rarity !== null) {
+            tier.rarity = rarity;
+          }
 
-                if (boolMatch) {
-                  tier[boolType] = boolMatch[1] === 'true';
-                }
-              }
+          return tier;
+        }
 
-              // Extract rarity
-              const rarityMatch = /rarity\s*=\s*(\d+)/.exec(tierContent);
-              if (rarityMatch) {
-                tier.rarity = parseInt(rarityMatch[1]);
-              }
+        // Process style data
+        function processStyle(styleKey, styleData) {
+          const style = {
+            title: extractStringValue(styleData, 'title'),
+            author: extractStringValue(styleData, 'author')
+          };
 
-              // Add tier to style
+          console.log(`Style ${styleKey}: "${style.title}" by "${style.author}"`);
+
+          // Extract all tier blocks
+          const tierBlocks = extractTierBlocks(styleData);
+          console.log(`Found ${Object.keys(tierBlocks).length} tier blocks in style ${styleKey}`);
+
+          // Process each tier
+          for (const [tierKey, tierContent] of Object.entries(tierBlocks)) {
+            const tier = processTier(tierKey, tierContent);
+            if (tier) {
               style[tierKey] = tier;
+              console.log(`Processed tier ${tierKey} - Name: "${tier.display_name_tier.en}", Color: [${tier.base_unified_color.join(', ')}]`);
+            }
+          }
+
+          return style;
         }
 
-        // Only add style to catalog if it has valid tiers
-        if (Object.keys(style).some(key => key.startsWith('tier'))) {
-          catalog[styleKey] = style;
+        // Find and process all styles
+        const styles = findStyles(tableContent);
+        console.log(`Found ${Object.keys(styles).length} styles in Lua file`);
+
+        // Process each style
+        for (const [styleKey, styleData] of Object.entries(styles)) {
+          const processedStyle = processStyle(styleKey, styleData);
+          if (processedStyle) {
+            catalog[styleKey] = processedStyle;
+          }
         }
+
+        return catalog;
+      } catch (e) {
+        console.error("Error importing Lua:", e);
+        throw e;
       }
-
-      return catalog;
-    } catch (e) {
-      console.error('Failed to parse Lua code:', e);
-      throw e;
     }
-  }
-
   // Helper function to process a style block
   function _processStyleBlock(styleBlock) {
     try {
